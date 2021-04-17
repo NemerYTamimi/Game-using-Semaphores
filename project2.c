@@ -54,6 +54,7 @@ void main(int argc, char *argv[])
   /*
    * Create the semaphore
    */
+
   pnum = atoi(argv[1]);
   if ((semid = semget(ipc_key, 6, IPC_CREAT | IPC_EXCL | 0660)) != -1)
   {
@@ -76,16 +77,15 @@ void main(int argc, char *argv[])
   case 0:
     for (i = 0; i < 10; i++)
     {
-      printf("Itaration # %d", i);
       acquire.sem_num = p0;
       if (semop(semid, &acquire, 1) == -1)
       {
         perror("semop -- p0 -- intital step");
         exit(3);
       }
-      printf("\nP0 start moving to Location G\n");
+      printf("P0 start moving to G\n");
       sleep(3);
-      printf("\nP0 start moving to to H\n");
+      printf("P0 start moving to H\n");
       sleep(4);
       release.sem_num = p3;
       if (semop(semid, &release, 1) == -1)
@@ -99,9 +99,17 @@ void main(int argc, char *argv[])
         perror("semop -- p0 -- waiting p3");
         exit(5);
       }
-      printf("\nP0 start moving back to G\n");
+      printf("P0 start moving back to G\n");
       sleep(4);
-
+      acquire.sem_num = p0;
+      if (semop(semid, &acquire, 1) == -1)
+      {
+        perror("semop -- p0 -- waiting p3");
+        exit(5);
+      }
+      printf("P0 start moving back to A\n");
+      sleep(3);
+      printf("\tP0 finished\t\n");
       release.sem_num = p1;
       if (semop(semid, &release, 1) == -1)
       {
@@ -132,22 +140,26 @@ void main(int argc, char *argv[])
         perror("error -- releases p5");
         exit(10);
       }
+      acquire.sem_num = p0;
+      if (semop(semid, &acquire, 1) == -1)
+      {
+        perror("semop -- p0 -- waiting p2");
+        exit(16);
+      }
     }
-
     break;
   case 1:
     for (i = 0; i < 10; i++)
     {
-
       acquire.sem_num = p1;
       if (semop(semid, &acquire, 1) == -1)
       {
         perror("semop -- p1 -- initial point");
         exit(11);
       }
-      printf("\nP1 start moving to location G\n");
+      printf("P1 start moving to  G\n");
       sleep(3);
-      printf("\nP1 start moving to Location H\n");
+      printf("P1 start moving to H\n");
       sleep(4);
       release.sem_num = p4;
       if (semop(semid, &release, 1) == -1)
@@ -162,7 +174,8 @@ void main(int argc, char *argv[])
         perror("semop -- p1 -- waiting p4");
         exit(13);
       }
-      printf("\nP1 start moving to I\n");
+
+      printf("P1 start moving to I\n");
       sleep(4);
 
       acquire.sem_num = p1;
@@ -171,7 +184,7 @@ void main(int argc, char *argv[])
         perror("semop -- p1 -- waiting p0");
         exit(14);
       }
-      printf("\nP1 start moving back to H\n");
+      printf("P1 start moving back to H\n");
       sleep(4);
 
       acquire.sem_num = p1;
@@ -180,7 +193,7 @@ void main(int argc, char *argv[])
         perror("semop -- p1 -- waiting p3");
         exit(15);
       }
-      printf("\nP1 start moving back to G\n");
+      printf("P1 start moving back to G\n");
       sleep(4);
 
       acquire.sem_num = p1;
@@ -189,23 +202,34 @@ void main(int argc, char *argv[])
         perror("semop -- p1 -- waiting p4");
         exit(16);
       }
-      printf("\nP1 start moving back to B\n");
+      printf("P1 start moving back to B\n");
       sleep(3);
+      printf("\tP1 finished\t\n");
+
+      acquire.sem_num = p1;
+      if (semop(semid, &acquire, 1) == -1)
+      {
+        perror("semop -- p1 -- waiting p2");
+        exit(16);
+      }
     }
     break;
   case 2:
     for (i = 0; i < 10; i++)
     {
+
       acquire.sem_num = p2;
       if (semop(semid, &acquire, 1) == -1)
       {
         perror("semop -- p2 -- initial state");
         exit(17);
       }
-      printf("\nP2 start moving to location G\n");
+      printf("P2 start moving to G\n");
       sleep(3);
-      printf("\nP2 start moving to Location H\n");
+
+      printf("P2 start moving to H\n");
       sleep(4);
+
       release.sem_num = p5;
       if (semop(semid, &release, 1) == -1)
       {
@@ -219,7 +243,7 @@ void main(int argc, char *argv[])
         perror("semop -- p2 -- waiting p4");
         exit(19);
       }
-      printf("\nP2 start moving to I\n");
+      printf("P2 start moving to I\n");
       sleep(4);
 
       acquire.sem_num = p2;
@@ -228,7 +252,7 @@ void main(int argc, char *argv[])
         perror("semop -- p2 -- waiting p0");
         exit(20);
       }
-      printf("\nP2 start moving to H\n");
+      printf("P2 start moving back to H\n");
       sleep(4);
 
       acquire.sem_num = p2;
@@ -237,7 +261,7 @@ void main(int argc, char *argv[])
         perror("semop -- p2 -- waiting p3");
         exit(21);
       }
-      printf("\nP2 start moving to G\n");
+      printf("P2 start moving back to G\n");
       sleep(4);
 
       acquire.sem_num = p2;
@@ -246,8 +270,11 @@ void main(int argc, char *argv[])
         perror("semop -- p2 -- waiting p4");
         exit(22);
       }
-      printf("\nP2 start moving to C\n");
+      printf("P2 start moving back to C\n");
       sleep(3);
+      printf("\tP2 finished\t\n");
+      printf("\n\t------Itaration # %d finished--------\t\n\n", i + 1);
+
       release.sem_num = p0;
       if (semop(semid, &release, 1) == -1)
       {
@@ -260,15 +287,44 @@ void main(int argc, char *argv[])
         perror("error -- releases p1");
         exit(10);
       }
-      release.sem_num = p0;
+      release.sem_num = p3;
+      if (semop(semid, &release, 1) == -1)
+      {
+        perror("error -- releases p3");
+        exit(10);
+      }
+      release.sem_num = p4;
+      if (semop(semid, &release, 1) == -1)
+      {
+        perror("error -- releases p4");
+        exit(10);
+      }
+      release.sem_num = p5;
+      if (semop(semid, &release, 1) == -1)
+      {
+        perror("error -- releases p5");
+        exit(10);
+      }
+      release.sem_num = p2;
       if (semop(semid, &release, 1) == -1)
       {
         perror("error -- releases p2");
         exit(10);
       }
+      release.sem_num = p0;
+      if (semop(semid, &release, 1) == -1)
+      {
+        perror("error -- releases p0");
+        exit(10);
+      }
+      release.sem_num = p1;
+      if (semop(semid, &release, 1) == -1)
+      {
+        perror("error -- releases p1");
+        exit(10);
+      }
     }
     break;
-
   case 3:
     for (i = 0; i < 10; i++)
     {
@@ -279,12 +335,13 @@ void main(int argc, char *argv[])
         perror("semop -- p3 -- waiting p0");
         exit(23);
       }
-      printf("\nP3 start moving to H\n");
-      sleep(4);
+      printf("P3 start moving to H\n");
+      sleep(6);
+
       release.sem_num = p0;
       if (semop(semid, &release, 1) == -1)
       {
-        perror("\nP3 releases p0");
+        perror("P3 releases p0");
         exit(24);
       }
 
@@ -294,8 +351,9 @@ void main(int argc, char *argv[])
         perror("semop -- p3 -- waiting p4");
         exit(25);
       }
-      printf("\nP3 start moving to I\n");
+      printf("P3 start moving to I\n");
       sleep(4);
+
       release.sem_num = p0;
       if (semop(semid, &release, 1) == -1)
       {
@@ -309,7 +367,7 @@ void main(int argc, char *argv[])
         perror("semop -- p3 -- waiting p0");
         exit(27);
       }
-      printf("\nP3 start moving back to H\n");
+      printf("P3 start moving back to H\n");
       sleep(4);
 
       acquire.sem_num = p3;
@@ -318,8 +376,10 @@ void main(int argc, char *argv[])
         perror("semop -- p3 -- waiting p5");
         exit(28);
       }
-      printf("\nP3 start moving to D\n");
-      sleep(4);
+      printf("P3 start moving back to D\n");
+      sleep(6);
+      printf("\tP3 finished\t\n");
+
       release.sem_num = p1;
       if (semop(semid, &release, 1) == -1)
       {
@@ -332,6 +392,12 @@ void main(int argc, char *argv[])
         perror("P3 releases p2");
         exit(30);
       }
+      acquire.sem_num = p3;
+      if (semop(semid, &acquire, 1) == -1)
+      {
+        perror("semop -- p3 -- waiting p0");
+        exit(23);
+      }
     }
     break;
   case 4:
@@ -343,8 +409,9 @@ void main(int argc, char *argv[])
         perror("semop -- p4 -- waiting p2");
         exit(31);
       }
-      printf("\nP4 start moving to H\n");
-      sleep(5);
+      printf("P4 start moving to H\n");
+      sleep(8);
+
       release.sem_num = p1;
       if (semop(semid, &release, 1) == -1)
       {
@@ -363,29 +430,15 @@ void main(int argc, char *argv[])
         perror("P4 releases p3");
         exit(34);
       }
-      release.sem_num = p4;
-      if (semop(semid, &release, 1) == -1)
-      {
-        perror("P4 releases p4");
-        exit(35);
-      }
-
-      acquire.sem_num = p4;
-      if (semop(semid, &acquire, 1) == -1)
-      {
-        perror("semop -- p4 -- waiting p4");
-        exit(36);
-      }
-      printf("\nP4 start moving to I\n");
+      printf("P4 start moving to I\n");
       sleep(4);
-
       acquire.sem_num = p4;
       if (semop(semid, &acquire, 1) == -1)
       {
         perror("semop -- p4 -- waiting p0");
         exit(37);
       }
-      printf("\nP4 start moving back to H\n");
+      printf("P4 start moving back to H\n");
       sleep(4);
 
       acquire.sem_num = p4;
@@ -394,19 +447,27 @@ void main(int argc, char *argv[])
         perror("semop -- p4 -- waiting p5");
         exit(38);
       }
-      printf("\nP4 start moving back to E\n");
-      sleep(5);
+      printf("P4 start moving back to E\n");
+      sleep(8);
+      printf("\tP4 finished\t\n");
+
       release.sem_num = p1;
       if (semop(semid, &release, 1) == -1)
       {
-        perror("\nP4 releases p1");
+        perror("P4 releases p1");
         exit(39);
       }
       release.sem_num = p2;
       if (semop(semid, &release, 1) == -1)
       {
-        perror("\nP4 releases p2");
+        perror("P4 releases p2");
         exit(40);
+      }
+      acquire.sem_num = p4;
+      if (semop(semid, &acquire, 1) == -1)
+      {
+        perror("semop -- p4 -- waiting p2");
+        exit(23);
       }
     }
     break;
@@ -419,7 +480,7 @@ void main(int argc, char *argv[])
         perror("semop -- p5 -- waiting p2");
         exit(41);
       }
-      printf("\nP5 start moving to I\n");
+      printf("P5 start moving to I\n");
       sleep(7);
 
       acquire.sem_num = p5;
@@ -428,8 +489,10 @@ void main(int argc, char *argv[])
         perror("semop -- p5 -- waiting p0");
         exit(42);
       }
-      printf("\nP5 start moving back to F\n");
+      printf("P5 start moving back to F\n");
       sleep(7);
+      printf("\tP5 finished\n");
+
       release.sem_num = p3;
       if (semop(semid, &release, 1) == -1)
       {
@@ -442,14 +505,19 @@ void main(int argc, char *argv[])
         perror("P5 releases p4");
         exit(44);
       }
+      acquire.sem_num = p5;
+      if (semop(semid, &acquire, 1) == -1)
+      {
+        perror("semop -- p5 -- waiting p2");
+        exit(23);
+      }
+    }
+    if (semctl(semid, 0, IPC_RMID, 0) != -1)
+    {
+      printf("\t semaphore removed \t\n");
     }
     break;
   }
 
-  if (semctl(semid, 0, IPC_RMID, 0) == -1)
-  {
-    perror("semctl remove all");
-    exit(45);
-  }
   exit(0);
 }
