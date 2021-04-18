@@ -572,8 +572,6 @@ for example child #0 run case 0
     {
       printf("\t\t     %sGame Ended and semaphores are removed%s\n", KYEL, KNRM);
     }
-
-    exit(0);
     break;
   }
 }
