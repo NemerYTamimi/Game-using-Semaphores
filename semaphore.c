@@ -1,35 +1,4 @@
-/*
- * semaphores Game
- */
-// colors
-#define KNRM "\x1B[0m"
-#define KRED "\x1B[31m"
-#define KGRN "\x1B[32m"
-#define KYEL "\x1B[33m"
-#define KBLU "\x1B[34m"
-#define KMAG "\x1B[35m"
-#define KCYN "\x1B[36m"
-#define KWHT "\x1B[37m"
-// end of colors
-#include <stdio.h>
-#include <unistd.h>
-#include <stdlib.h>
-#include <sys/types.h>
-#include <sys/ipc.h>
-#include <sys/sem.h>
-
-/* This declaration is *MISSING* is many solaris environments.
-   It should be in the <sys/sem.h> file but often is not! If 
-   you receive a duplicate definition error message for semun
-   then comment out the union declaration.
-   */
-
-union semun
-{
-  int val;
-  struct semid_ds *buf;
-  ushort *array;
-};
+#include "local.h"
 
 void main(int argc, char *argv[])
 {
@@ -40,18 +9,10 @@ void main(int argc, char *argv[])
   pid_t c_pid;
   key_t ipc_key;
   static ushort start_val[6] = {1, 1, 1, 0, 0, 0};
-  int semid, pnum, i, n, p_sleep, c_sleep;
+  int semid, pnum, i, n, sleep_time, wait_flag1 = 1, wait_flag2 = 1, wait_flag3 = 1, wait_flag4 = 1, sleep_limit = 5;
   union semun arg;
-  enum
-  {
-    p0,
-    p1,
-    p2,
-    p3,
-    p4,
-    p5
-  };
 
+  srand((unsigned)getpid());
   if (argc != 2)
   {
     fprintf(stderr, "usage: %s child id\n", argv[0]);
@@ -65,7 +26,10 @@ void main(int argc, char *argv[])
    */
   //get the child id from argument
   pnum = atoi(argv[1]);
-
+  /*
+  * first child will create the semaphore and initialize it with {1,1,1,0,0,0}
+  * that makes p0,p1 and p2 starts directly
+  */
   if ((semid = semget(ipc_key, 6, IPC_CREAT | IPC_EXCL | 0660)) != -1)
   {
     arg.array = start_val;
@@ -73,15 +37,18 @@ void main(int argc, char *argv[])
     if (semctl(semid, 0, SETALL, arg) == -1)
     {
       perror("semctl  -- initialization");
-      exit(1);
+      exit(-1);
     }
   }
   else if ((semid = semget(ipc_key, 3, 0)) == -1)
   {
     perror("semget -- obtaining semaphore");
-    exit(2);
+    exit(-1);
   }
 
+  /*
+* this \n just for style 
+  */
   if (pnum < 3)
     printf("\n");
 
@@ -92,87 +59,150 @@ for example child #0 run case 0
 
   switch (pnum)
   {
+    /* P0 code start */
   case 0:
     for (i = 0; i < 10; i++)
     {
-      acquire.sem_num = p0;
+      acquire.sem_num = p0; //initial acguire
       if (semop(semid, &acquire, 1) == -1)
       {
         perror("semop -- p0 -- intital step");
-        exit(3);
+        exit(-1);
       }
-      printf("\t\t\tP0 start moving forword to G\n");
-      sleep(1);
-      printf("\t\t\t\t%sP0 arrived G%s\n", KMAG, KNRM);
-      printf("\t\t\tP0 start moving forword to H\n");
-      sleep(2);
-      printf("\t\t\t\t%sP0 arrived H%s\n", KMAG, KNRM);
-
-      release.sem_num = p3;
+      release.sem_num = p0;
       if (semop(semid, &release, 1) == -1)
       {
-        perror("\t\t\tP0 releases p3");
-        exit(4);
+        perror("error -- releases himself");
+        exit(-1);
+      }
+
+      printf("\t\t\tP0 start moving forword to G\n");
+      sleep_time = rand() % sleep_limit + 1;
+      sleep(sleep_time);
+      printf("\t\t\t%sP0 arrived G after %dseconds %s\n", KMAG, sleep_time, KNRM);
+      acquire.sem_num = p0;
+      if (semop(semid, &acquire, 1) == -1)
+      {
+        perror("semop -- p0 -- tell p1 & p2 I arrived");
+        exit(-1);
+      }
+      /* 
+      here p0 will waits until p1 & p2 are arrived G when changes its semaphore value from 2 to 0
+      */
+      wait_flag1 = 1;
+      wait_flag2 = 1;
+      while (wait_flag1 != 0)
+      {
+        while (wait_flag2 != 0)
+        {
+          if ((wait_flag2 = semctl(semid, 1, GETVAL, 0)) == -1)
+          {
+            perror("semctl: GETVAL P1");
+            exit(-1);
+          }
+        }
+        if ((wait_flag1 = semctl(semid, 2, GETVAL, 0)) == -1)
+        {
+          perror("semctl: GETVAL P2");
+          exit(-1);
+        }
+      }
+      release.sem_num = p0;
+      if (semop(semid, &release, 1) == -1)
+      {
+        perror("error -- releases himself");
+        exit(-1);
+      }
+      printf("\t\t\tP0 start moving forword to H\n");
+      sleep_time = rand() % sleep_limit + 1;
+      sleep(sleep_time);
+      printf("\t\t\t%sP0 arrived H after %dseconds%s\n", KMAG, sleep_time, KNRM);
+      acquire.sem_num = p0;
+      if (semop(semid, &acquire, 1) == -1)
+      {
+        perror("semop -- p0 -- say I arrived");
+        exit(-1);
+      }
+      wait_flag1 = 1;
+      wait_flag2 = 1;
+      while (wait_flag1 != 0)
+      {
+        while (wait_flag2 != 0)
+        {
+          if ((wait_flag2 = semctl(semid, 1, GETVAL, 0)) == -1)
+          {
+            perror("semctl: GETVAL P1");
+            exit(-1);
+          }
+        }
+        if ((wait_flag1 = semctl(semid, 2, GETVAL, 0)) == -1)
+        {
+          perror("semctl: GETVAL P2");
+          exit(-1);
+        }
       }
       acquire.sem_num = p0;
       if (semop(semid, &acquire, 1) == -1)
       {
-        perror("semop -- p0 -- waiting p3");
-        exit(5);
+        perror("semop -- p0 -- waiting p3 or p4");
+        exit(-1);
       }
       printf("\t\t\tP0 start moving back to G\n");
-      sleep(2);
-      printf("\t\t\t\t%sP0 arrived G%s\n", KMAG, KNRM);
+      sleep_time = rand() % sleep_limit + 1;
+      sleep(sleep_time);
+      printf("\t\t\t%sP0 arrived G after %dseconds%s\n", KMAG, sleep_time, KNRM);
 
       acquire.sem_num = p0;
       if (semop(semid, &acquire, 1) == -1)
       {
-        perror("semop -- p0 -- waiting p3");
-        exit(5);
+        perror("semop -- p0 -- waiting p1-p3 {p3 must release it}");
+        exit(-1);
       }
       printf("\t\t\tP0 start moving back to A\n");
-      sleep(1);
-      printf("\t\t\t\t%sP0 arrived A%s\n", KMAG, KNRM);
+      sleep_time = rand() % sleep_limit + 1;
+      sleep(sleep_time);
+      printf("\t\t\t%sP0 arrived A after %dseconds%s\n", KMAG, sleep_time, KNRM);
 
       printf("\t\t\t\t%sP0 finished%s\t\n", KGRN, KNRM);
       release.sem_num = p1;
       if (semop(semid, &release, 1) == -1)
       {
         perror("error -- releases p1");
-        exit(6);
+        exit(-1);
       }
       release.sem_num = p2;
       if (semop(semid, &release, 1) == -1)
       {
         perror("error -- releases p2");
-        exit(7);
+        exit(-1);
       }
       release.sem_num = p3;
       if (semop(semid, &release, 1) == -1)
       {
         perror("error -- releases p3");
-        exit(8);
+        exit(-1);
       }
       release.sem_num = p4;
       if (semop(semid, &release, 1) == -1)
       {
         perror("error -- releases p4");
-        exit(9);
+        exit(-1);
       }
       release.sem_num = p5;
       if (semop(semid, &release, 1) == -1)
       {
         perror("error -- releases p5");
-        exit(10);
+        exit(-1);
       }
       acquire.sem_num = p0;
       if (semop(semid, &acquire, 1) == -1)
       {
         perror("semop -- p0 -- waiting p2");
-        exit(16);
+        exit(-1);
       }
-    }
+    } /* P0 code end */
     break;
+    /* P1 code start */
   case 1:
     for (i = 0; i < 10; i++)
     {
@@ -180,74 +210,213 @@ for example child #0 run case 0
       if (semop(semid, &acquire, 1) == -1)
       {
         perror("semop -- p1 -- initial point");
-        exit(11);
+        exit(-1);
       }
-      printf("\t\t\tP1 start moving forword to G\n");
-      sleep(1);
-      printf("\t\t\t\t%sP1 arrived G%s\n", KMAG, KNRM);
-
-      printf("\t\t\tP1 start moving forword to H\n");
-      sleep(2);
-      printf("\t\t\t\t%sP1 arrived H%s\n", KMAG, KNRM);
-
-      release.sem_num = p4;
+      release.sem_num = p1;
       if (semop(semid, &release, 1) == -1)
       {
-        perror("error -- p1 releases p4");
-        exit(12);
+        perror("error -- releases himself");
+        exit(-1);
       }
-
+      printf("\t\t\tP1 start moving forword to G\n");
+      sleep_time = rand() % sleep_limit + 1;
+      sleep(sleep_time);
+      printf("\t\t\t%sP1 arrived G after %dseconds%s\n", KMAG, sleep_time, KNRM);
+      acquire.sem_num = p1;
+      if (semop(semid, &acquire, 1) == -1)
+      {
+        perror("semop -- p1 -- tell p0 & p2 I arrived");
+        exit(-1);
+      }
+      /* 
+      here p1 will waits until p0 & p2 are arrived G when changes its semaphore value from 2 to 0
+      */
+      wait_flag1 = 1;
+      wait_flag2 = 1;
+      while (wait_flag1 != 0)
+      {
+        while (wait_flag2 != 0)
+        {
+          if ((wait_flag2 = semctl(semid, 2, GETVAL, 0)) == -1)
+          {
+            perror("semctl: GETVAL P2");
+            exit(-1);
+          }
+        }
+        if ((wait_flag1 = semctl(semid, 0, GETVAL, 0)) == -1)
+        {
+          perror("semctl: GETVAL P0");
+          exit(-1);
+        }
+      }
+      release.sem_num = p1;
+      if (semop(semid, &release, 1) == -1)
+      {
+        perror("error -- releases himself");
+        exit(-1);
+      }
+      printf("\t\t\tP1 start moving forword to H\n");
+      sleep_time = rand() % sleep_limit + 1;
+      sleep(sleep_time);
+      printf("\t\t\t%sP1 arrived H after %dseconds%s\n", KMAG, sleep_time, KNRM);
+      acquire.sem_num = p1;
+      if (semop(semid, &acquire, 1) == -1)
+      {
+        perror("semop -- p1 -- tell others i arrived");
+        exit(-1);
+      }
+      while (wait_flag1 != 0)
+      {
+        while (wait_flag2 != 0)
+        {
+          if ((wait_flag2 = semctl(semid, 2, GETVAL, 0)) == -1)
+          {
+            perror("semctl: GETVAL P2");
+            exit(-1);
+          }
+        }
+        if ((wait_flag1 = semctl(semid, 0, GETVAL, 0)) == -1)
+        {
+          perror("semctl: GETVAL P0");
+          exit(-1);
+        }
+      }
       acquire.sem_num = p1;
       if (semop(semid, &acquire, 1) == -1)
       {
         perror("semop -- p1 -- waiting p4");
-        exit(13);
+        exit(-1);
       }
-
+      release.sem_num = p1;
+      if (semop(semid, &release, 1) == -1)
+      {
+        perror("error -- releases himself");
+        exit(-1);
+      }
       printf("\t\t\tP1 start moving forword to I\n");
-      sleep(2);
-      printf("\t\t\t\t%sP1 arrived I%s\n", KMAG, KNRM);
+      sleep_time = rand() % sleep_limit + 1;
+      sleep(sleep_time);
+      printf("\t\t\t%sP1 arrived I after %dseconds%s\n", KMAG, sleep_time, KNRM);
+      wait_flag1 = 1;
+      if (wait_flag1 != 0)
+      {
+        acquire.sem_num = p1;
+        if (semop(semid, &acquire, 1) == -1)
+        {
+          perror("semop -- p1 -- tell others i finished");
+          exit(-1);
+        }
+        if ((wait_flag1 = semctl(semid, 1, GETVAL, 0)) == -1)
+        {
+          perror("semctl: GETVAL P1");
+          exit(-1);
+        }
+      }
+      wait_flag1 = 1;
+      wait_flag2 = 1;
+      wait_flag3 = 1;
+      wait_flag4 = 1;
+
+      while (wait_flag1 != 0)
+      {
+        while (wait_flag2 != 0)
+        {
+          while (wait_flag3 != 0)
+          {
+            while (wait_flag4 != 0)
+            {
+              if ((wait_flag4 = semctl(semid, 2, GETVAL, 0)) == -1)
+              {
+                perror("semctl: GETVAL P2");
+                exit(4);
+              }
+            }
+            if ((wait_flag3 = semctl(semid, 3, GETVAL, 0)) == -1)
+            {
+              perror("semctl: GETVAL P3");
+              exit(4);
+            }
+          }
+          if ((wait_flag2 = semctl(semid, 4, GETVAL, 0)) == -1)
+          {
+            perror("semctl: GETVAL P4");
+            exit(4);
+          }
+        }
+        if ((wait_flag1 = semctl(semid, 5, GETVAL, 0)) == -1)
+        {
+          perror("semctl: GETVAL P5");
+          exit(4);
+        }
+      }
 
       acquire.sem_num = p1;
       if (semop(semid, &acquire, 1) == -1)
       {
         perror("semop -- p1 -- waiting p0");
-        exit(14);
+        exit(-1);
       }
       printf("\t\t\tP1 start moving back to H\n");
-      sleep(2);
-      printf("\t\t\t\t%sP1 arrived H%s\n", KMAG, KNRM);
+      sleep_time = rand() % sleep_limit + 1;
+      sleep(sleep_time);
+
+      printf("\t\t\t%sP1 arrived H after %dseconds%s\n", KMAG, sleep_time, KNRM);
 
       acquire.sem_num = p1;
       if (semop(semid, &acquire, 1) == -1)
       {
         perror("semop -- p1 -- waiting p3");
-        exit(15);
+        exit(-1);
+      }
+      release.sem_num = p1;
+      if (semop(semid, &release, 1) == -1)
+      {
+        perror("error -- releases himself");
+        exit(-1);
       }
       printf("\t\t\tP1 start moving back to G\n");
-      sleep(2);
-      printf("\t\t\t\t%sP1 arrived G%s\n", KMAG, KNRM);
-
+      sleep_time = rand() % sleep_limit + 1;
+      sleep(sleep_time);
+      printf("\t\t\t%sP1 arrived G after %dseconds%s\n", KMAG, sleep_time, KNRM);
+      acquire.sem_num = p1;
+      if (semop(semid, &acquire, 1) == -1)
+      {
+        perror("semop -- p1 -- tell others i arrived");
+        exit(-1);
+      }
       acquire.sem_num = p1;
       if (semop(semid, &acquire, 1) == -1)
       {
         perror("semop -- p1 -- waiting p4");
-        exit(16);
+        exit(-1);
+      }
+      release.sem_num = p1;
+      if (semop(semid, &release, 1) == -1)
+      {
+        perror("error -- releases himself");
+        exit(-1);
       }
       printf("\t\t\tP1 start moving back to B\n");
-      sleep(1);
-      printf("\t\t\t\t%sP1 arrived B%s\n", KMAG, KNRM);
-
+      sleep_time = rand() % sleep_limit + 1;
+      sleep(sleep_time);
+      printf("\t\t\t%sP1 arrived B after %dseconds%s\n", KMAG, sleep_time, KNRM);
       printf("\t\t\t\t%sP1 finished%s\t\n", KGRN, KNRM);
-
+      acquire.sem_num = p1;
+      if (semop(semid, &acquire, 1) == -1)
+      {
+        perror("semop -- p1 -- tell others i arrived");
+        exit(-1);
+      }
       acquire.sem_num = p1;
       if (semop(semid, &acquire, 1) == -1)
       {
         perror("semop -- p1 -- waiting p2");
-        exit(16);
+        exit(-1);
       }
     }
+    /* P1 code end */
     break;
+    /* P2 code start */
   case 2:
     for (i = 0; i < 10; i++)
     {
@@ -256,116 +425,265 @@ for example child #0 run case 0
       if (semop(semid, &acquire, 1) == -1)
       {
         perror("semop -- p2 -- initial state");
-        exit(17);
-      }
-      printf("\t\t\tP2 start moving forword to G\n");
-      sleep(1);
-      printf("\t\t\t\t%sP2 arrived G%s\n", KMAG, KNRM);
-
-      printf("\t\t\tP2 start moving forword to H\n");
-      sleep(2);
-      printf("\t\t\t\t%sP2 arrived H%s\n", KMAG, KNRM);
-
-      release.sem_num = p5;
-      if (semop(semid, &release, 1) == -1)
-      {
-        perror("error -- p2 release p5");
-        exit(18);
-      }
-
-      acquire.sem_num = p2;
-      if (semop(semid, &acquire, 1) == -1)
-      {
-        perror("semop -- p2 -- waiting p4");
-        exit(19);
-      }
-      printf("\t\t\tP2 start moving forword to I\n");
-      sleep(2);
-      printf("\t\t\t\t%sP2 arrived I%s\n", KMAG, KNRM);
-
-      acquire.sem_num = p2;
-      if (semop(semid, &acquire, 1) == -1)
-      {
-        perror("semop -- p2 -- waiting p0");
-        exit(20);
-      }
-      printf("\t\t\tP2 start moving back to H\n");
-      sleep(2);
-      printf("\t\t\t\t%sP2 arrived H%s\n", KMAG, KNRM);
-
-      acquire.sem_num = p2;
-      if (semop(semid, &acquire, 1) == -1)
-      {
-        perror("semop -- p2 -- waiting p3");
-        exit(21);
-      }
-      printf("\t\t\tP2 start moving back to G\n");
-      sleep(2);
-      printf("\t\t\t\t%sP2 arrived G%s\n", KMAG, KNRM);
-
-      acquire.sem_num = p2;
-      if (semop(semid, &acquire, 1) == -1)
-      {
-        perror("semop -- p2 -- waiting p4");
-        exit(22);
-      }
-      printf("\t\t\tP2 start moving back to C\n");
-      sleep(1);
-      printf("\t\t\t\t%sP2 arrived C%s\n", KMAG, KNRM);
-
-      printf("\t\t\t\t%sP2 finished%s\t\n", KGRN, KNRM);
-      printf("\n\t\t---------%sItaration # %d finished%s-----------\n\n", KBLU, i + 1, KNRM);
-
-      release.sem_num = p0;
-      if (semop(semid, &release, 1) == -1)
-      {
-        perror("error -- releases p0");
-        exit(10);
-      }
-      release.sem_num = p1;
-      if (semop(semid, &release, 1) == -1)
-      {
-        perror("error -- releases p1");
-        exit(10);
-      }
-      release.sem_num = p3;
-      if (semop(semid, &release, 1) == -1)
-      {
-        perror("error -- releases p3");
-        exit(10);
-      }
-      release.sem_num = p4;
-      if (semop(semid, &release, 1) == -1)
-      {
-        perror("error -- releases p4");
-        exit(10);
-      }
-      release.sem_num = p5;
-      if (semop(semid, &release, 1) == -1)
-      {
-        perror("error -- releases p5");
-        exit(10);
+        exit(-1);
       }
       release.sem_num = p2;
       if (semop(semid, &release, 1) == -1)
       {
         perror("error -- releases p2");
-        exit(10);
+        exit(-1);
+      }
+      printf("\t\t\tP2 start moving forword to G\n");
+      sleep_time = rand() % sleep_limit + 1;
+      sleep(sleep_time);
+      printf("\t\t\t%sP2 arrived G after %dseconds%s\n", KMAG, sleep_time, KNRM);
+      acquire.sem_num = p2;
+      if (semop(semid, &acquire, 1) == -1)
+      {
+        perror("semop -- p2 -- tell p1 & p2 I arrived");
+        exit(-1);
+      }
+      /* 
+      here p2 will waits until p0 & p1 are arrived G when changes its semaphore value from 2 to 0
+      */
+      wait_flag1 = 1;
+      wait_flag2 = 1;
+      while (wait_flag1 != 0)
+      {
+        while (wait_flag2 != 0)
+        {
+          if ((wait_flag2 = semctl(semid, 0, GETVAL, 0)) == -1)
+          {
+            perror("semctl: GETVAL P0");
+            exit(-1);
+          }
+        }
+        if ((wait_flag1 = semctl(semid, 1, GETVAL, 0)) == -1)
+        {
+          perror("semctl: GETVAL P1");
+          exit(-1);
+        }
+      }
+      release.sem_num = p2;
+      if (semop(semid, &release, 1) == -1)
+      {
+        perror("error -- p2 releases himself");
+        exit(-1);
+      }
+      printf("\t\t\tP2 start moving forword to H\n");
+      sleep_time = rand() % sleep_limit + 1;
+      sleep(sleep_time);
+      printf("\t\t\t%sP2 arrived H after %dseconds%s\n", KMAG, sleep_time, KNRM);
+      acquire.sem_num = p2;
+      if (semop(semid, &acquire, 1) == -1)
+      {
+        perror("semop -- p2 -- tell others I arrived");
+        exit(-1);
+      }
+      wait_flag1 = 1;
+      wait_flag2 = 1;
+      while (wait_flag1 != 0)
+      {
+        while (wait_flag2 != 0)
+        {
+          if ((wait_flag2 = semctl(semid, 0, GETVAL, 0)) == -1)
+          {
+            perror("semctl: GETVAL P0");
+            exit(-1);
+          }
+        }
+        if ((wait_flag1 = semctl(semid, 1, GETVAL, 0)) == -1)
+        {
+          perror("semctl: GETVAL P1");
+          exit(-1);
+        }
+      }
+      release.sem_num = p3;
+      if (semop(semid, &release, 1) == -1)
+      {
+        perror("error -- p2 release p3");
+        exit(-1);
+      }
+      release.sem_num = p4;
+      if (semop(semid, &release, 1) == -1)
+      {
+        perror("error -- p2 release p4");
+        exit(-1);
+      }
+      release.sem_num = p5;
+      if (semop(semid, &release, 1) == -1)
+      {
+        perror("error -- p2 release p5");
+        exit(-1);
+      }
+
+      acquire.sem_num = p2;
+      if (semop(semid, &acquire, 1) == -1)
+      {
+        perror("semop -- p2 -- waiting p4");
+        exit(-1);
+      }
+      release.sem_num = p2;
+      if (semop(semid, &release, 1) == -1)
+      {
+        perror("error -- releases himself");
+        exit(-1);
+      }
+      printf("\t\t\tP2 start moving forword to I\n");
+      sleep_time = rand() % sleep_limit + 1;
+      sleep(sleep_time);
+      printf("\t\t\t%sP2 arrived I after %dseconds%s\n", KMAG, sleep_time, KNRM);
+      wait_flag1 = 1;
+      if (wait_flag1 != 0)
+      {
+        acquire.sem_num = p2;
+        if (semop(semid, &acquire, 1) == -1)
+        {
+          perror("semop -- p2 -- tell others i finished");
+          exit(-1);
+        }
+        if ((wait_flag1 = semctl(semid, 2, GETVAL, 0)) == -1)
+        {
+          perror("semctl: GETVAL P2");
+          exit(-1);
+        }
+      }
+      wait_flag1 = 1;
+      wait_flag2 = 1;
+      wait_flag3 = 1;
+      wait_flag4 = 1;
+
+      while (wait_flag1 != 0)
+      {
+        while (wait_flag2 != 0)
+        {
+          while (wait_flag3 != 0)
+          {
+            while (wait_flag4 != 0)
+            {
+              if ((wait_flag4 = semctl(semid, 1, GETVAL, 0)) == -1)
+              {
+                perror("semctl: GETVAL P1");
+                exit(-1);
+              }
+            }
+            if ((wait_flag3 = semctl(semid, 3, GETVAL, 0)) == -1)
+            {
+              perror("semctl: GETVAL P3");
+              exit(-1);
+            }
+          }
+          if ((wait_flag2 = semctl(semid, 4, GETVAL, 0)) == -1)
+          {
+            perror("semctl: GETVAL P4");
+            exit(-1);
+          }
+        }
+        if ((wait_flag1 = semctl(semid, 5, GETVAL, 0)) == -1)
+        {
+          perror("semctl: GETVAL P5");
+          exit(-1);
+        }
+      }
+
+      acquire.sem_num = p2;
+      if (semop(semid, &acquire, 1) == -1)
+      {
+        perror("semop -- p2 -- waiting p0");
+        exit(-1);
+      }
+      printf("\t\t\tP2 start moving back to H\n");
+      sleep_time = rand() % sleep_limit + 1;
+      sleep(sleep_time);
+      printf("\t\t\t%sP2 arrived H after %dseconds%s\n", KMAG, sleep_time, KNRM);
+      acquire.sem_num = p2;
+      if (semop(semid, &acquire, 1) == -1)
+      {
+        perror("semop -- p2 -- waiting p3");
+        exit(-1);
+      }
+      printf("\t\t\tP2 start moving back to G\n");
+      sleep_time = rand() % sleep_limit + 1;
+      sleep(sleep_time);
+      printf("\t\t\t%sP2 arrived G after %dseconds%s\n", KMAG, sleep_time, KNRM);
+
+      acquire.sem_num = p2;
+      if (semop(semid, &acquire, 1) == -1)
+      {
+        perror("semop -- p2 -- waiting p4");
+        exit(-1);
+      }
+      printf("\t\t\tP2 start moving back to C\n");
+      sleep_time = rand() % sleep_limit + 1;
+      sleep(sleep_time);
+      printf("\t\t\t%sP2 arrived C after %dseconds%s\n", KMAG, sleep_time, KNRM);
+
+      printf("\t\t\t\t%sP2 finished%s\t\n", KGRN, KNRM);
+      wait_flag1 = 1;
+      while (wait_flag1 != 0)
+      {
+        if ((wait_flag1 = semctl(semid, 1, GETVAL, 0)) == -1)
+        {
+          perror("semctl: GETVAL P1");
+          exit(-1);
+        }
+      }
+      printf("\n\t\t---------%sItaration # %d finished%s-----------\n\n", KBLU, i + 1, KNRM);
+
+      release.sem_num = p3;
+      if (semop(semid, &release, 1) == -1)
+      {
+        perror("error -- releases p3");
+        exit(-1);
+      }
+      release.sem_num = p4;
+      if (semop(semid, &release, 1) == -1)
+      {
+        perror("error -- releases p4");
+        exit(-1);
+      }
+      release.sem_num = p5;
+      if (semop(semid, &release, 1) == -1)
+      {
+        perror("error -- releases p5");
+        exit(-1);
       }
       release.sem_num = p0;
       if (semop(semid, &release, 1) == -1)
       {
         perror("error -- releases p0");
-        exit(10);
+        exit(-1);
       }
       release.sem_num = p1;
       if (semop(semid, &release, 1) == -1)
       {
         perror("error -- releases p1");
-        exit(10);
+        exit(-1);
+      }
+      release.sem_num = p0;
+      if (semop(semid, &release, 1) == -1)
+      {
+        perror("error -- releases p0");
+        exit(-1);
+      }
+      release.sem_num = p1;
+      if (semop(semid, &release, 1) == -1)
+      {
+        perror("error -- releases p1");
+        exit(-1);
+      }
+      release.sem_num = p2;
+      if (semop(semid, &release, 1) == -1)
+      {
+        perror("error -- releases p2");
+        exit(-1);
       }
     }
+    /* P2 code end */
+
     break;
+    /* P3 code start */
+
   case 3:
     for (i = 0; i < 10; i++)
     {
@@ -374,55 +692,162 @@ for example child #0 run case 0
       if (semop(semid, &acquire, 1) == -1)
       {
         perror("semop -- p3 -- waiting p0");
-        exit(23);
+        exit(-1);
       }
-      printf("\t\t\tP3 start moving forword to H\n");
-      sleep(3);
-      printf("\t\t\t\t%sP3 arrived H%s\n", KMAG, KNRM);
-
-      release.sem_num = p0;
+      release.sem_num = p3;
       if (semop(semid, &release, 1) == -1)
       {
-        perror("\t\t\tP3 releases p0");
-        exit(24);
+        perror("\t\t\tP3 releases himself");
+        exit(-1);
+      }
+      printf("\t\t\tP3 start moving forword to H\n");
+      sleep_time = rand() % sleep_limit + 1;
+      sleep(sleep_time);
+      printf("\t\t\t%sP3 arrived H after %dseconds%s\n", KMAG, sleep_time, KNRM);
+      acquire.sem_num = p3;
+      if (semop(semid, &acquire, 1) == -1)
+      {
+        perror("semop -- p3 -- tell others i arrived");
+        exit(-1);
+      }
+      wait_flag1 = 1;
+      if ((wait_flag1 = semctl(semid, 4, GETVAL, 0)) == -1)
+      {
+        perror("semctl: GETVAL P4");
+        exit(-1);
+      }
+      if (wait_flag1 != 0)
+      { /*check if p4 finished or not*/
+        release.sem_num = p0;
+        if (semop(semid, &release, 1) == -1)
+        {
+          perror("\t\t\tP3 releases p0");
+          exit(-1);
+        }
+      }
+      else
+      {
+        release.sem_num = p1;
+        if (semop(semid, &release, 1) == -1)
+        {
+          perror("\t\t\tP3 releases p1");
+          exit(-1);
+        }
+        release.sem_num = p2;
+        if (semop(semid, &release, 1) == -1)
+        {
+          perror("\t\t\tP3 releases p2");
+          exit(-1);
+        }
+        release.sem_num = p3;
+        if (semop(semid, &release, 1) == -1)
+        {
+          perror("\t\t\tP3 releases p3");
+          exit(-1);
+        }
+        release.sem_num = p4;
+        if (semop(semid, &release, 1) == -1)
+        {
+          perror("\t\t\tP3 releases p4");
+          exit(-1);
+        }
       }
 
       acquire.sem_num = p3;
       if (semop(semid, &acquire, 1) == -1)
       {
-        perror("semop -- p3 -- waiting p4");
-        exit(25);
+        perror("semop -- p3 -- waiting p4 or himself");
+        exit(-1);
+      }
+      release.sem_num = p3;
+      if (semop(semid, &release, 1) == -1)
+      {
+        perror("error -- releases himself");
+        exit(-1);
       }
       printf("\t\t\tP3 start moving forword to I\n");
-      sleep(2);
-      printf("\t\t\t\t%sP3 arrived I%s\n", KMAG, KNRM);
+      sleep_time = rand() % sleep_limit + 1;
+      sleep(sleep_time);
+      printf("\t\t\t%sP3 arrived I after %dseconds%s\n", KMAG, sleep_time, KNRM);
+      wait_flag1 = 1;
+      if (wait_flag1 != 0)
+      {
+        acquire.sem_num = p3;
+        if (semop(semid, &acquire, 1) == -1)
+        {
+          perror("semop -- p3 -- tell others i finished");
+          exit(-1);
+        }
+        if ((wait_flag1 = semctl(semid, 3, GETVAL, 0)) == -1)
+        {
+          perror("semctl: GETVAL P3");
+          exit(-1);
+        }
+      }
+      wait_flag1 = 1;
+      wait_flag2 = 1;
+      wait_flag3 = 1;
+      wait_flag4 = 1;
 
+      while (wait_flag1 != 0)
+      {
+        while (wait_flag2 != 0)
+        {
+          while (wait_flag3 != 0)
+          {
+            while (wait_flag4 != 0)
+            {
+              if ((wait_flag4 = semctl(semid, 1, GETVAL, 0)) == -1)
+              {
+                perror("semctl: GETVAL P1");
+                exit(-1);
+              }
+            }
+            if ((wait_flag3 = semctl(semid, 2, GETVAL, 0)) == -1)
+            {
+              perror("semctl: GETVAL P2");
+              exit(-1);
+            }
+          }
+          if ((wait_flag2 = semctl(semid, 4, GETVAL, 0)) == -1)
+          {
+            perror("semctl: GETVAL P4");
+            exit(-1);
+          }
+        }
+        if ((wait_flag1 = semctl(semid, 5, GETVAL, 0)) == -1)
+        {
+          perror("semctl: GETVAL P5");
+          exit(-1);
+        }
+      }
       release.sem_num = p0;
       if (semop(semid, &release, 1) == -1)
       {
         perror("\t\t\tP3 releaases p0");
-        exit(26);
+        exit(-1);
       }
-
       acquire.sem_num = p3;
       if (semop(semid, &acquire, 1) == -1)
       {
         perror("semop -- p3 -- waiting p0");
-        exit(27);
+        exit(-1);
       }
       printf("\t\t\tP3 start moving back to H\n");
-      sleep(2);
-      printf("\t\t\t\t%sP3 arrived H%s\n", KMAG, KNRM);
+      sleep_time = rand() % sleep_limit + 1;
+      sleep(sleep_time);
+      printf("\t\t\t%sP3 arrived H after %dseconds%s\n", KMAG, sleep_time, KNRM);
 
       acquire.sem_num = p3;
       if (semop(semid, &acquire, 1) == -1)
       {
         perror("semop -- p3 -- waiting p5");
-        exit(28);
+        exit(-1);
       }
       printf("\t\t\tP3 start moving back to D\n");
-      sleep(3);
-      printf("\t\t\t\t%sP3 arrived D%s\n", KMAG, KNRM);
+      sleep_time = rand() % sleep_limit + 1;
+      sleep(sleep_time);
+      printf("\t\t\t%sP3 arrived D after %dseconds%s\n", KMAG, sleep_time, KNRM);
 
       printf("\t\t\t\t%sP3 finished%s\t\n", KGRN, KNRM);
 
@@ -430,22 +855,26 @@ for example child #0 run case 0
       if (semop(semid, &release, 1) == -1)
       {
         perror("\t\t\tP3 releases p1");
-        exit(29);
+        exit(-1);
       }
       release.sem_num = p2;
       if (semop(semid, &release, 1) == -1)
       {
         perror("\t\t\tP3 releases p2");
-        exit(30);
+        exit(-1);
       }
       acquire.sem_num = p3;
       if (semop(semid, &acquire, 1) == -1)
       {
         perror("semop -- p3 -- waiting p0");
-        exit(23);
+        exit(-1);
       }
     }
+    /* P3 code end */
+
     break;
+    /* P4 code start */
+
   case 4:
     for (i = 0; i < 10; i++)
     {
@@ -453,53 +882,160 @@ for example child #0 run case 0
       if (semop(semid, &acquire, 1) == -1)
       {
         perror("semop -- p4 -- waiting p2");
-        exit(31);
+        exit(-1);
+      }
+      release.sem_num = p4;
+      if (semop(semid, &release, 1) == -1)
+      {
+        perror("\t\t\tP4 releases himself");
+        exit(-1);
       }
       printf("\t\t\tP4 start moving forword to H\n");
-      sleep(4);
-      printf("\t\t\t\t%sP4 arrived H%s\n", KMAG, KNRM);
+      sleep_time = rand() % sleep_limit + 1;
+      sleep(sleep_time);
+      printf("\t\t\t%sP4 arrived H after %dseconds%s\n", KMAG, sleep_time, KNRM);
+      acquire.sem_num = p4;
+      if (semop(semid, &acquire, 1) == -1)
+      {
+        perror("semop -- p4 -- tell others i arrived");
+        exit(-1);
+      }
+      wait_flag1 = 1;
+      if ((wait_flag1 = semctl(semid, 3, GETVAL, 0)) == -1)
+      {
+        perror("semctl: GETVAL P3");
+        exit(-1);
+      }
+      if (wait_flag1 != 0)
+      { /*check if p3 finished or not*/
+        release.sem_num = p0;
+        if (semop(semid, &release, 1) == -1)
+        {
+          perror("\t\t\tP4 releases p0");
+          exit(-1);
+        }
+      }
+      else
+      {
+        release.sem_num = p1;
+        if (semop(semid, &release, 1) == -1)
+        {
+          perror("\t\t\tP4 releases p1");
+          exit(-1);
+        }
+        release.sem_num = p2;
+        if (semop(semid, &release, 1) == -1)
+        {
+          perror("\t\t\tP4 releases p2");
+          exit(-1);
+        }
+        release.sem_num = p3;
+        if (semop(semid, &release, 1) == -1)
+        {
+          perror("\t\t\tP4 releases p3");
+          exit(-1);
+        }
+        release.sem_num = p4;
+        if (semop(semid, &release, 1) == -1)
+        {
+          perror("\t\t\tP4 releases p4");
+          exit(-1);
+        }
+      }
 
-      release.sem_num = p1;
-      if (semop(semid, &release, 1) == -1)
+      acquire.sem_num = p4;
+      if (semop(semid, &acquire, 1) == -1)
       {
-        perror("\t\t\tP4 releases p1");
-        exit(32);
+        perror("semop -- p4 -- waiting p3 or himself");
+        exit(-1);
       }
-      release.sem_num = p2;
+
+      release.sem_num = p4;
       if (semop(semid, &release, 1) == -1)
       {
-        perror("\t\t\tP4 releases p2");
-        exit(33);
-      }
-      release.sem_num = p3;
-      if (semop(semid, &release, 1) == -1)
-      {
-        perror("\t\t\tP4 releases p3");
-        exit(34);
+        perror("error -- releases himself");
+        exit(-1);
       }
       printf("\t\t\tP4 start moving forword to I\n");
-      sleep(2);
-      printf("\t\t\t\t%sP4 arrived I%s\n", KMAG, KNRM);
+      sleep_time = rand() % sleep_limit + 1;
+      sleep(sleep_time);
+      printf("\t\t\t%sP4 arrived I after %dseconds%s\n", KMAG, sleep_time, KNRM);
+      wait_flag1 = 1;
+      if (wait_flag1 != 0)
+      {
+        acquire.sem_num = p4;
+        if (semop(semid, &acquire, 1) == -1)
+        {
+          perror("semop -- p4 -- tell others i finished");
+          exit(-1);
+        }
+        if ((wait_flag1 = semctl(semid, 4, GETVAL, 0)) == -1)
+        {
+          perror("semctl: GETVAL P4");
+          exit(-1);
+        }
+      }
+
+      wait_flag1 = 1;
+      wait_flag2 = 1;
+      wait_flag3 = 1;
+      wait_flag4 = 1;
+
+      while (wait_flag1 != 0)
+      {
+        while (wait_flag2 != 0)
+        {
+          while (wait_flag3 != 0)
+          {
+            while (wait_flag4 != 0)
+            {
+              if ((wait_flag4 = semctl(semid, 1, GETVAL, 0)) == -1)
+              {
+                perror("semctl: GETVAL P1");
+                exit(-1);
+              }
+            }
+            if ((wait_flag3 = semctl(semid, 2, GETVAL, 0)) == -1)
+            {
+              perror("semctl: GETVAL P2");
+              exit(-1);
+            }
+          }
+          if ((wait_flag2 = semctl(semid, 3, GETVAL, 0)) == -1)
+          {
+            perror("semctl: GETVAL P3");
+            exit(-1);
+          }
+        }
+        if ((wait_flag1 = semctl(semid, 5, GETVAL, 0)) == -1)
+        {
+          perror("semctl: GETVAL P5");
+          exit(-1);
+        }
+      }
 
       acquire.sem_num = p4;
       if (semop(semid, &acquire, 1) == -1)
       {
         perror("semop -- p4 -- waiting p0");
-        exit(37);
+        exit(-1);
       }
+
       printf("\t\t\tP4 start moving back to H\n");
-      sleep(2);
-      printf("\t\t\t\t%sP4 arrived H%s\n", KMAG, KNRM);
+      sleep_time = rand() % sleep_limit + 1;
+      sleep(sleep_time);
+      printf("\t\t\t%sP4 arrived H after %dseconds%s\n", KMAG, sleep_time, KNRM);
 
       acquire.sem_num = p4;
       if (semop(semid, &acquire, 1) == -1)
       {
         perror("semop -- p4 -- waiting p5");
-        exit(38);
+        exit(-1);
       }
       printf("\t\t\tP4 start moving back to E\n");
-      sleep(4);
-      printf("\t\t\t\t%sP4 arrived E%s\n", KMAG, KNRM);
+      sleep_time = rand() % sleep_limit + 1;
+      sleep(sleep_time);
+      printf("\t\t\t%sP4 arrived E after %dseconds%s\n", KMAG, sleep_time, KNRM);
 
       printf("\t\t\t\t%sP4 finished%s\t\n", KGRN, KNRM);
 
@@ -507,22 +1043,26 @@ for example child #0 run case 0
       if (semop(semid, &release, 1) == -1)
       {
         perror("\t\t\tP4 releases p1");
-        exit(39);
+        exit(-1);
       }
       release.sem_num = p2;
       if (semop(semid, &release, 1) == -1)
       {
         perror("\t\t\tP4 releases p2");
-        exit(40);
+        exit(-1);
       }
       acquire.sem_num = p4;
       if (semop(semid, &acquire, 1) == -1)
       {
         perror("semop -- p4 -- waiting p2");
-        exit(23);
+        exit(-1);
       }
     }
+    /* P4 code end */
+
     break;
+    /* P5 code start */
+
   case 5:
     for (i = 0; i < 10; i++)
     {
@@ -530,21 +1070,82 @@ for example child #0 run case 0
       if (semop(semid, &acquire, 1) == -1)
       {
         perror("semop -- p5 -- waiting p2");
-        exit(41);
+        exit(-1);
+      }
+      release.sem_num = p5;
+      if (semop(semid, &release, 1) == -1)
+      {
+        perror("error -- releases himself");
+        exit(-1);
       }
       printf("\t\t\tP5 start moving forword to I\n");
-      sleep(3);
-      printf("\t\t\t\t%sP5 arrived I%s\n", KMAG, KNRM);
+      sleep_time = rand() % sleep_limit + 1;
+      sleep(sleep_time);
+      printf("\t\t\t%sP5 arrived I after %dseconds%s\n", KMAG, sleep_time, KNRM);
+      wait_flag1 = 1;
+      if (wait_flag1 != 0)
+      {
+        acquire.sem_num = p5;
+        if (semop(semid, &acquire, 1) == -1)
+        {
+          perror("semop -- p5 -- tell others i finished");
+          exit(-1);
+        }
+        if ((wait_flag1 = semctl(semid, 5, GETVAL, 0)) == -1)
+        {
+          perror("semctl: GETVAL P5");
+          exit(-1);
+        }
+      }
+      wait_flag1 = 1;
+      wait_flag2 = 1;
+      wait_flag3 = 1;
+      wait_flag4 = 1;
+
+      while (wait_flag1 != 0)
+      {
+        while (wait_flag2 != 0)
+        {
+          while (wait_flag3 != 0)
+          {
+            while (wait_flag4 != 0)
+            {
+              if ((wait_flag4 = semctl(semid, 1, GETVAL, 0)) == -1)
+              {
+                perror("semctl: GETVAL P1");
+                exit(-1);
+              }
+            }
+            if ((wait_flag3 = semctl(semid, 2, GETVAL, 0)) == -1)
+            {
+              perror("semctl: GETVAL P2");
+              exit(-1);
+            }
+          }
+          if ((wait_flag2 = semctl(semid, 3, GETVAL, 0)) == -1)
+          {
+            perror("semctl: GETVAL P4");
+            exit(-1);
+          }
+        }
+        if ((wait_flag1 = semctl(semid, 4, GETVAL, 0)) == -1)
+        {
+          perror("semctl: GETVAL P4");
+          exit(-1);
+        }
+      }
 
       acquire.sem_num = p5;
       if (semop(semid, &acquire, 1) == -1)
       {
         perror("semop -- p5 -- waiting p0");
-        exit(42);
+        exit(-1);
       }
+
       printf("\t\t\tP5 start moving back to F\n");
-      sleep(3);
-      printf("\t\t\t\t%sP5 arrived F%s\n", KMAG, KNRM);
+      sleep_time = rand() % sleep_limit + 1;
+      sleep(sleep_time);
+      printf("\t\t\t%sP5 arrived F after %dseconds%s\n", KMAG, sleep_time, KNRM);
 
       printf("\t\t\t\t%sP5 finished%s\n", KGRN, KNRM);
 
@@ -552,26 +1153,23 @@ for example child #0 run case 0
       if (semop(semid, &release, 1) == -1)
       {
         perror("\t\t\tP5 releases p3");
-        exit(43);
+        exit(-1);
       }
       release.sem_num = p4;
       if (semop(semid, &release, 1) == -1)
       {
         perror("\t\t\tP5 releases p4");
-        exit(44);
+        exit(-1);
       }
       acquire.sem_num = p5;
       if (semop(semid, &acquire, 1) == -1)
       {
         perror("semop -- p5 -- waiting p2");
-        exit(23);
+        exit(-1);
       }
     }
-
-    if (semctl(semid, 0, IPC_RMID, 0) != -1)
-    {
-      printf("\t\t     %sGame Ended and semaphores are removed%s\n", KYEL, KNRM);
-    }
+    /* P5 code end */
     break;
   }
+  exit(0);
 }

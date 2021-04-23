@@ -1,25 +1,18 @@
 // colors
-#define KNRM "\x1B[0m"
-#define KRED "\x1B[31m"
-#define KGRN "\x1B[32m"
-#define KYEL "\x1B[33m"
-#define KBLU "\x1B[34m"
-#define KMAG "\x1B[35m"
-#define KCYN "\x1B[36m"
-#define KWHT "\x1B[37m"
-// end of colors
+#include "local.h"
 
-#include <unistd.h>
-#include <stdio.h>
-#include <stdlib.h>
 int i = 0;
 int main()
 {
+    key_t ipc_key;
+    ipc_key = ftok(".", 'S');
+    pid_t c[6];
+    int croaker, semid, status;
     for (i = 0; i < 6; i++)
     {
 
-        pid_t c = fork();
-        if (c == 0) // fork returns 0 to the child process so it enters "if" block
+        c[i] = fork();
+        if (c[i] == 0) // fork returns 0 to the child process so it enters "if" block
         {
             if (i == 0)
             {
@@ -34,8 +27,25 @@ int main()
                 perror("executing_error");
                 exit(1);
             }
-            
+            exit(0);
         }
     }
-    return 0;
+    waitpid(c[1], &status, 0);
+    if ((semid = semget(ipc_key, 3, 0)) == -1)
+    {
+        perror("semget -- obtaining semaphore");
+        exit(2);
+    }
+    kill(c[0], 9);
+    kill(c[1], 9);
+    kill(c[2], 9);
+    kill(c[3], 9);
+    kill(c[4], 9);
+    kill(c[5], 9);
+
+    if (semctl(semid, 0, IPC_RMID, 0) != -1)
+    {
+        printf("\t\t     %sGame Ended and semaphores are removed%s\n", KYEL, KNRM);
+    }
+    exit(0);
 }
